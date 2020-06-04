@@ -28,6 +28,24 @@ template <typename Tok> struct Traits {
 /// Default output implementation (does nothing) (like printf, or std::cout)
 template <typename Tok> void output (Tok const &tok) {}
 
+template <typename Tok> void outputLineEnd ()
+{
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::cr) {
+                output<char> ('\r');
+                return;
+        }
+
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::lf) {
+                output<char> ('\n');
+                return;
+        }
+
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::crlf) {
+                output<const char *> ("\r\n");
+                return;
+        }
+}
+
 enum class Error { unrecognizedCommand };
 
 /// Error handler
@@ -35,7 +53,8 @@ template <typename Tok> void errorHandler (Tok const & /* tok */, Error error)
 {
         switch (error) {
         case Error::unrecognizedCommand:
-                output<Tok> ("Unrecognized command\n");
+                output<const char *> ("Unrecognized command");
+                outputLineEnd<Tok> ();
                 break;
 
         default:
@@ -43,79 +62,7 @@ template <typename Tok> void errorHandler (Tok const & /* tok */, Error error)
         }
 }
 
-template <typename Tok> void outputLineEnd ()
-{
-        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::cr) {
-                output<Tok> ("\r");
-                return;
-        }
-
-        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::lf) {
-                output<Tok> ("\n");
-                return;
-        }
-
-        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::crlf) {
-                output<Tok> ("\r\n");
-                return;
-        }
-}
-
-template <typename Tok> void outputln (Tok const &tok)
-{
-        output<Tok> (tok);
-        outputLineEnd<Tok> ();
-}
-
 /****************************************************************************/
-
-/**
- * Default tokenizer. Implement a specialization to override.
- */
-// template <typename Tok> class Tokenizer {
-// public:
-//         template <typename Inp> std::optional<Tok> operator() (Inp const &input) const { return input; }
-// };
-
-/**
- * TODO :
- * - buffer oveflow
- * - strip \r-s and \n-s from the end.
- */
-// template <typename Tok> class Tokenizer {
-// public:
-//         std::optional<Tok> operator() (gsl::span<const char> data) const
-//         {
-//                 size_t charsToCopy = data.size ();
-
-//                 if (data.size () + current.size () > Traits<Tok>::maxTokenSize) {
-//                         charsToCopy = Traits<Tok>::maxTokenSize - current.size ();
-//                 }
-
-//                 if constexpr (Traits<Tok>::echo) {
-//                         Tok tmp{};
-//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (tmp));
-//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (current));
-//                         output<Tok> (tmp);
-//                 }
-//                 else {
-//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (current));
-//                 }
-
-//                 if (data.back () == '\n' || data.back () == '\r') {
-//                         if constexpr (Traits<Tok>::echo) {
-//                                 outputLineEnd<Tok> ();
-//                         }
-
-//                         return {current};
-//                 }
-
-//                 return {};
-//         }
-
-// private:
-//         mutable Tok current;
-// };
 
 template <typename Tok> class Tokenizer {
 public:
