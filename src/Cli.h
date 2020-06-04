@@ -15,18 +15,15 @@
 
 namespace cl {
 
-class Completion {
-};
-class History {
+enum class LineEnd { cr, lf, crlf };
+
+template <typename Tok> struct Traits {
+        static constexpr LineEnd outputLineEnd{LineEnd::crlf};
+        static constexpr size_t maxTokenSize = 16;
+        static constexpr bool echo = false;
 };
 
-/**
- * Default tokenizer. Implement a specialization to override.
- */
-template <typename Tok> class Tokenizer {
-public:
-        template <typename Inp> std::optional<Tok> operator() (Inp const &input) const { return input; }
-};
+/****************************************************************************/
 
 /// Default output implementation (does nothing) (like printf, or std::cout)
 template <typename Tok> void output (Tok const &tok) {}
@@ -45,6 +42,116 @@ template <typename Tok> void errorHandler (Tok const & /* tok */, Error error)
                 break;
         }
 }
+
+template <typename Tok> void outputLineEnd ()
+{
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::cr) {
+                output<Tok> ("\r");
+                return;
+        }
+
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::lf) {
+                output<Tok> ("\n");
+                return;
+        }
+
+        if constexpr (Traits<Tok>::outputLineEnd == LineEnd::crlf) {
+                output<Tok> ("\r\n");
+                return;
+        }
+}
+
+template <typename Tok> void outputln (Tok const &tok)
+{
+        output<Tok> (tok);
+        outputLineEnd<Tok> ();
+}
+
+/****************************************************************************/
+
+/**
+ * Default tokenizer. Implement a specialization to override.
+ */
+// template <typename Tok> class Tokenizer {
+// public:
+//         template <typename Inp> std::optional<Tok> operator() (Inp const &input) const { return input; }
+// };
+
+/**
+ * TODO :
+ * - buffer oveflow
+ * - strip \r-s and \n-s from the end.
+ */
+// template <typename Tok> class Tokenizer {
+// public:
+//         std::optional<Tok> operator() (gsl::span<const char> data) const
+//         {
+//                 size_t charsToCopy = data.size ();
+
+//                 if (data.size () + current.size () > Traits<Tok>::maxTokenSize) {
+//                         charsToCopy = Traits<Tok>::maxTokenSize - current.size ();
+//                 }
+
+//                 if constexpr (Traits<Tok>::echo) {
+//                         Tok tmp{};
+//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (tmp));
+//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (current));
+//                         output<Tok> (tmp);
+//                 }
+//                 else {
+//                         std::copy_n (data.begin (), charsToCopy, std::back_inserter (current));
+//                 }
+
+//                 if (data.back () == '\n' || data.back () == '\r') {
+//                         if constexpr (Traits<Tok>::echo) {
+//                                 outputLineEnd<Tok> ();
+//                         }
+
+//                         return {current};
+//                 }
+
+//                 return {};
+//         }
+
+// private:
+//         mutable Tok current;
+// };
+
+template <typename Tok> class Tokenizer {
+public:
+        std::optional<Tok> operator() (char ch) const
+        {
+                if (clear) {
+                        current.clear ();
+                        clear = false;
+                }
+
+                if (ch == '\n' || ch == '\r') {
+                        if constexpr (Traits<Tok>::echo) {
+                                outputLineEnd<Tok> ();
+                        }
+
+                        clear = true;
+                        return {current};
+                }
+
+                if (current.size () < Traits<Tok>::maxTokenSize) {
+                        current += ch;
+
+                        if constexpr (Traits<Tok>::echo) {
+                                output<char> (ch);
+                        }
+                }
+
+                return {};
+        }
+
+private:
+        mutable Tok current;
+        mutable bool clear{};
+};
+
+/****************************************************************************/
 
 /**
  * Commands have form of : name -> function.
@@ -79,7 +186,7 @@ namespace detail {
                 }
 
                 if constexpr (sizeof...(rest)) {
-                        cliRunImpl (token, rest...);
+                        return cliRunImpl (token, rest...);
                 }
 
                 return false;

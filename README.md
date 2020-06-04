@@ -26,6 +26,8 @@ Tests
 Requirements for a token type:
 * Has to have operator==
 
+* output has to be able to print both tokens and single `char`s.
+
 # Tokenizer
 Is for... 
 Interface is...

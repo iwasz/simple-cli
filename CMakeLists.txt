@@ -26,3 +26,7 @@ ADD_EXECUTABLE (unittest
     "test/03OutputTest.cc"
 )
 
+ADD_EXECUTABLE (demo
+    "test/demo.cc"
+)
+
