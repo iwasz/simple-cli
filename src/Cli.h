@@ -157,7 +157,7 @@ public:
                                                     callbacks);
                 }
 
-                if (token && !commandWasRun) {
+                if (token && !token->empty () && !commandWasRun) {
                         errorHandler (*token, Error::unrecognizedCommand);
                 }
         }
