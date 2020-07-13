@@ -8,6 +8,7 @@
 
 #pragma once
 #include <array>
+#include <etl/queue_spsc_locked.h>
 #include <gsl/gsl>
 #include <optional>
 #include <tuple>
@@ -138,6 +139,19 @@ namespace detail {
 
                 return false;
         }
+
+        class InterruptControl {
+        public:
+                void lock () { __disable_irq (); }
+                void unlock () { __enable_irq (); }
+        };
+
+        InterruptControl interruptControl;
+
+        // Create function wrappers with direct calls to the instance's member functions.
+        etl::function_imv<InterruptControl, interruptControl, &InterruptControl::lock> lock;
+        etl::function_imv<InterruptControl, interruptControl, &InterruptControl::unlock> unlock;
+
 } // namespace detail
 
 /**
@@ -147,24 +161,36 @@ template <typename Tok, typename CbksT> class Cli {
 public:
         explicit Cli (CbksT c) : callbacks{std::move (c)} {}
 
-        template <typename Inp> void run (Inp const &input)
+        // Can be called from ISR
+        template <typename Inp> void input (Inp const &input)
         {
                 auto token = tokenizer (input);
-                bool commandWasRun{};
 
                 if (token) {
-                        commandWasRun = std::apply ([token = *token] (auto &... callback) { return detail::cliRunImpl (token, callback...); },
-                                                    callbacks);
+                        tokenQueue.push_from_unlocked (std::move (*token));
                 }
+        }
 
-                if (token && !token->empty () && !commandWasRun) {
-                        errorHandler (*token, Error::unrecognizedCommand);
+        void run ()
+        {
+                while (!tokenQueue.empty ()) {
+                        bool commandWasRun{};
+                        Tok token;
+                        tokenQueue.pop (token);
+
+                        commandWasRun
+                                = std::apply ([&token] (auto &... callback) { return detail::cliRunImpl (token, callback...); }, callbacks);
+
+                        if (!token.empty () && !commandWasRun) {
+                                errorHandler (token, Error::unrecognizedCommand);
+                        }
                 }
         }
 
 private:
         CbksT callbacks;
         Tokenizer<Tok> tokenizer;
+        etl::queue_spsc_locked<Tok, 2, etl::memory_model::MEMORY_MODEL_SMALL> tokenQueue{detail::lock, detail::unlock};
 };
 
 /**
