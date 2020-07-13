@@ -140,18 +140,8 @@ namespace detail {
                 return false;
         }
 
-        class InterruptControl {
-        public:
-                void lock () { __disable_irq (); }
-                void unlock () { __enable_irq (); }
-        };
-
-        InterruptControl interruptControl;
-
-        // Create function wrappers with direct calls to the instance's member functions.
-        etl::function_imv<InterruptControl, interruptControl, &InterruptControl::lock> lock;
-        etl::function_imv<InterruptControl, interruptControl, &InterruptControl::unlock> unlock;
-
+        const etl::function_fv<__disable_irq> lock{};
+        const etl::function_fv<__enable_irq> unlock{};
 } // namespace detail
 
 /**
@@ -190,7 +180,7 @@ public:
 private:
         CbksT callbacks;
         Tokenizer<Tok> tokenizer;
-        etl::queue_spsc_locked<Tok, 2, etl::memory_model::MEMORY_MODEL_SMALL> tokenQueue{detail::lock, detail::unlock};
+        etl::queue_spsc_locked<Tok, 2, etl::memory_model::MEMORY_MODEL_SMALL> tokenQueue{cl::detail::lock, cl::detail::unlock};
 };
 
 /**
