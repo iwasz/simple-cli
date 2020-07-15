@@ -8,6 +8,7 @@
 
 #pragma once
 #include <array>
+#include <boost/type_traits/function_traits.hpp>
 #include <etl/queue_spsc_locked.h>
 #include <gsl/gsl>
 #include <optional>
@@ -65,28 +66,51 @@ template <typename Tok> void errorHandler (Tok const & /* tok */, Error error)
 
 /****************************************************************************/
 
-template <typename Tok> class Tokenizer {
+template <typename Str> struct Token {
+        Str command;
+        Str argument;
+};
+
+template <typename Str> class Tokenizer {
 public:
+        using Tok = Token<Str>;
+
         std::optional<Tok> operator() (char ch) const
         {
                 if (clear) {
-                        current.clear ();
+                        token.command.clear ();
                         clear = false;
+                        argParse = false;
                 }
 
                 if (ch == '\n' || ch == '\r') {
-                        if constexpr (Traits<Tok>::echo) {
-                                outputLineEnd<Tok> ();
+                        if constexpr (Traits<Str>::echo) {
+                                outputLineEnd<Str> ();
                         }
 
                         clear = true;
-                        return {current};
+                        argParse = false;
+                        return {token};
                 }
 
-                if (current.size () < Traits<Tok>::maxTokenSize) {
-                        current += ch;
+                bool out{};
 
-                        if constexpr (Traits<Tok>::echo) {
+                if (ch == ' ') {
+                        argParse = true;
+                        out = true;
+                }
+                else { // Don't add space to the arg
+                        if (!argParse && (token.command.size () < Traits<Str>::maxTokenSize)) {
+                                token.command += ch;
+                                out = true;
+                        }
+                        else if (argParse && (token.argument.size () < Traits<Str>::maxTokenSize)) {
+                                out = true;
+                                token.argument += ch;
+                        }
+                }
+                if constexpr (Traits<Str>::echo) {
+                        if (out) {
                                 output<char> (ch);
                         }
                 }
@@ -95,25 +119,34 @@ public:
         }
 
 private:
-        mutable Tok current;
+        mutable Tok token;
         mutable bool clear{};
-};
+        mutable bool argParse{};
+}; // namespace cl
 
 /****************************************************************************/
 
 /**
  * Commands have form of : name -> function.
  */
-template <typename Tok, typename Fn> class Cmd {
+template <typename Str, typename Fn> class Cmd {
 public:
-        Cmd (Tok tok, Fn fn) : token{std::move (tok)}, function{std::move (fn)} {}
+        Cmd (Str tok, Fn fn) : command{std::move (tok)}, function{std::move (fn)} {}
 
-        bool check (Tok const &tok) const { return tok == token; }
+        bool check (Str const &tok) const { return tok == command; }
 
-        template <typename... Par> auto operator() (Par &&... parm) { return function (std::forward<Par> (parm)...); }
+        template <typename... Par> auto operator() (Par &&... parm)
+        {
+                if constexpr (std::is_invocable_v<Fn, Par...>) {
+                        return function (std::forward<Par> (parm)...);
+                }
+                else {
+                        return function ();
+                }
+        }
 
 private:
-        Tok token;
+        Str command;
         Fn function;
 };
 
@@ -128,8 +161,8 @@ template <typename Tok, typename Fn> constexpr auto cmd (Tok &&token, Fn &&funct
 namespace detail {
         template <typename Tok, typename Cbk, typename... Rst> bool cliRunImpl (Tok const &token, Cbk &callback, Rst &... rest)
         {
-                if (callback.check (token)) {
-                        callback ();
+                if (callback.check (token.command)) {
+                        callback (token.argument);
                         return true;
                 }
 
@@ -140,14 +173,20 @@ namespace detail {
                 return false;
         }
 
+#ifdef PROTECTED_QUEUE
         const etl::function_fv<__disable_irq> lock{};
         const etl::function_fv<__enable_irq> unlock{};
+#else
+        inline void f () {}
+        const etl::function_fv<f> lock{};
+        const etl::function_fv<f> unlock{};
+#endif
 } // namespace detail
 
 /**
  * Main command line intarface "engine".
  */
-template <typename Tok, typename CbksT> class Cli {
+template <typename Str, typename CbksT> class Cli {
 public:
         explicit Cli (CbksT c) : callbacks{std::move (c)} {}
 
@@ -165,13 +204,13 @@ public:
         {
                 while (!tokenQueue.empty ()) {
                         bool commandWasRun{};
-                        Tok token;
+                        Token<Str> token;
                         tokenQueue.pop (token);
 
                         commandWasRun
                                 = std::apply ([&token] (auto &... callback) { return detail::cliRunImpl (token, callback...); }, callbacks);
 
-                        if (!token.empty () && !commandWasRun) {
+                        if (!token.command.empty () && !commandWasRun) {
                                 errorHandler (token, Error::unrecognizedCommand);
                         }
                 }
@@ -179,8 +218,8 @@ public:
 
 private:
         CbksT callbacks;
-        Tokenizer<Tok> tokenizer;
-        etl::queue_spsc_locked<Tok, 2, etl::memory_model::MEMORY_MODEL_SMALL> tokenQueue{cl::detail::lock, cl::detail::unlock};
+        Tokenizer<Str> tokenizer;
+        etl::queue_spsc_locked<Token<Str>, 2, etl::memory_model::MEMORY_MODEL_SMALL> tokenQueue{cl::detail::lock, cl::detail::unlock};
 };
 
 /**

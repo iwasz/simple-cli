@@ -9,10 +9,12 @@ SET(CMAKE_CXX_FLAGS "-std=c++17 -Wall -fdata-sections -ffunction-sections -fno-u
 
 SET(CMAKE_EXE_LINKER_FLAGS "-Wl,--gc-sections" CACHE INTERNAL "exe link flags")
 ADD_DEFINITIONS ("-DUNIT_TEST")
+# ADD_DEFINITIONS ("-DPROTECTED_QUEUE")
 
 SET (CATCH2_INCLUDE "deps/Catch2/single_include/catch2")
 INCLUDE_DIRECTORIES("${CATCH2_INCLUDE}")
-include_directories ("deps/GSL/include" "deps/etl/include") 
+include_directories ("deps/GSL/include") 
+include_directories ("deps/etl/include") 
 
 INCLUDE_DIRECTORIES("src")
 INCLUDE_DIRECTORIES("test")

@@ -36,3 +36,4 @@ Can be statefull, if a token is not fully assembled yet, it can return an empty 
 # TODO
 * [ ] Commad parameters.
 * [ ] Figure out how to (and where) implement echo. 
+* [ ] Token queue (and/or locking mechanism) should be configurable. Remove ETL dependency, not everyone has to like it.
