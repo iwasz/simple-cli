@@ -8,7 +8,6 @@
 
 #pragma once
 #include <array>
-#include <boost/type_traits/function_traits.hpp>
 #include <etl/queue_spsc_locked.h>
 #include <gsl/gsl>
 #include <optional>
