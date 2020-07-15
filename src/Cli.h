@@ -78,6 +78,8 @@ public:
         {
                 if (clear) {
                         token.command.clear ();
+                        token.argument.clear ();
+
                         clear = false;
                         argParse = false;
                 }
