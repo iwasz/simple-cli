@@ -8,6 +8,7 @@
 
 #pragma once
 #include <array>
+#include <cctype>
 #include <etl/queue_spsc_locked.h>
 #include <gsl/gsl>
 #include <optional>
@@ -18,10 +19,13 @@ namespace cl {
 
 enum class LineEnd { cr, lf, crlf };
 
+enum class Case { sensitive, insensitive };
+
 template <typename Tok> struct Traits {
         static constexpr LineEnd outputLineEnd{LineEnd::crlf};
         static constexpr size_t maxTokenSize = 16;
         static constexpr bool echo = false;
+        static constexpr Case comparison = Case::sensitive;
 };
 
 /****************************************************************************/
@@ -134,9 +138,23 @@ template <typename Str, typename Fn> class Cmd {
 public:
         Cmd (Str tok, Fn fn) : command{std::move (tok)}, function{std::move (fn)} {}
 
-        bool check (Str const &tok) const { return tok == command; }
+        bool check (Str const &tok) const
+        {
+                if constexpr (Traits<Str>::comparison == Case::sensitive) {
+                        return tok == command;
+                }
+                else {
+                        if (tok.size () != command.size ()) {
+                                return false;
+                        }
 
-        template <typename... Par> auto operator() (Par &&... parm)
+                        return std::search (command.cbegin (), command.cend (), tok.cbegin (), tok.cend (),
+                                            [] (auto c, auto d) { return tolower (c) == tolower (d); })
+                                == command.cbegin ();
+                }
+        }
+
+        template <typename... Par> auto operator() (Par &&...parm)
         {
                 if constexpr (std::is_invocable_v<Fn, Par...>) {
                         return function (std::forward<Par> (parm)...);
@@ -160,7 +178,7 @@ template <typename Tok, typename Fn> constexpr auto cmd (Tok &&token, Fn &&funct
 }
 
 namespace detail {
-        template <typename Tok, typename Cbk, typename... Rst> bool cliRunImpl (Tok const &token, Cbk &callback, Rst &... rest)
+        template <typename Tok, typename Cbk, typename... Rst> bool cliRunImpl (Tok const &token, Cbk &callback, Rst &...rest)
         {
                 if (callback.check (token.command)) {
                         callback (token.argument);
@@ -208,8 +226,7 @@ public:
                         Token<Str> token;
                         tokenQueue.pop (token);
 
-                        commandWasRun
-                                = std::apply ([&token] (auto &... callback) { return detail::cliRunImpl (token, callback...); }, callbacks);
+                        commandWasRun = std::apply ([&token] (auto &...callback) { return detail::cliRunImpl (token, callback...); }, callbacks);
 
                         if (!token.command.empty () && !commandWasRun) {
                                 errorHandler (token, Error::unrecognizedCommand);
@@ -226,7 +243,7 @@ private:
 /**
  * A helper for creating a Cli instance.
  */
-template <typename Tok, typename... Cbk> constexpr auto cli (Cbk &&... cbks)
+template <typename Tok, typename... Cbk> constexpr auto cli (Cbk &&...cbks)
 {
         return Cli<Tok, decltype (std::make_tuple (std::forward<Cbk> (cbks)...))> (std::make_tuple (std::forward<Cbk> (cbks)...));
 }
